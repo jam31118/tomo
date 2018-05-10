@@ -71,7 +71,8 @@ class Tomo(object):
 
     def initializeImage(self):
         if self.initial_image_array is None:
-            self.current_image = np.ones(self.image_flat_length)
+#            self.current_image = np.ones(self.image_flat_length)
+            self.current_image = np.zeros(self.image_flat_length)
         else: self.current_image = self.initial_image_array.flatten(order=self.image_array_order)
 
     def _check_constraint_on_2d_image_array(self, image):
