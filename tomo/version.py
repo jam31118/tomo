@@ -1,3 +1,3 @@
 """Version is defined in this module"""
-__version__ = "0.0.1a1"
+__version__ = "0.0.2a0"
 

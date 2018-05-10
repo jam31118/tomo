@@ -1,5 +1,9 @@
 """Tools for projecting a N-D data to lower dimension"""
+
+from numbers import Real
+
 import numpy as np
+
 
 def overlap_flat(positionFromCenter, r=1):
     """
@@ -142,5 +146,39 @@ def get_w_matrix(angle, line_index, array_size, r = 1.0, flatten=False, threshol
     
     return w_array
 
+
+def project_2d_to_1d(img, angle, ray_index_range_width):
+    
+    ## Check input arguments
+    for arg in [angle, ray_index_range_width]: assert isinstance(arg, Real)
+    assert ray_index_range_width == int(ray_index_range_width)
+    assert isinstance(img, np.ndarray)
+    
+    numOfIndex = 2 * ray_index_range_width + 1
+    projected = np.zeros((numOfIndex,), dtype=float)
+    for line_index in range(-ray_index_range_width,ray_index_range_width+1):
+        ray_w_array = get_w_matrix(angle, line_index, img.shape)
+        projected[line_index + ray_index_range_width] = np.inner(ray_w_array.flatten(), img.flatten())
+    return projected
+
+
+def get_sinogram_from_image(image_array, angles, ray_index_range_width, verbose=False):
+    
+    for arr_arg in [image_array, angles]: assert isinstance(arr_arg, np.ndarray)
+    assert (image_array.ndim == 2) and (angles.ndim == 1)
+    assert ray_index_range_width == int(ray_index_range_width)
+    assert ray_index_range_width >= 0
+    
+    num_of_angle = angles.size
+    num_of_ray = 2 * ray_index_range_width + 1
+    
+    sinogram_array_shape = (num_of_angle, num_of_ray)
+    sinogram = np.empty(sinogram_array_shape, dtype=float)
+    
+    for idx, angle in enumerate(angles):
+        if verbose: print("Projecting at angle {0:.3f} pi".format(angle / np.pi))
+        sinogram[idx,:] = project_2d_to_1d(image_array, angle, ray_index_range_width)
+    
+    return sinogram
 
 
