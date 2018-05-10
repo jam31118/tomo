@@ -1,4 +1,4 @@
 # tomo : Tomographic Reconstruction Tool
-Algebraic Tomographcis Reconstruction (ART) Methods from projections of aribturary 3D object.
 
+Python Implementation for Algebraic Tomographcis Reconstruction (ART) from projections of aribturary 3D object.
 

@@ -6,7 +6,8 @@ from .projection import get_w_matrix
 class Tomo(object):
     image_array_order = 'C'
 
-    def __init__(self, image, projection_measured, angles, index_range_width, relaxation_coef=1.0,r=1.0):
+    def __init__(self, image, projection_measured, angles, index_range_width, 
+            relaxation_coef=1.0, r=1.0, w_matrices=None, verbose=False):
         """
         ## Arguments
         # image_size
@@ -40,9 +41,9 @@ class Tomo(object):
         self.image_flat_length = self.image_size[0] * self.image_size[1]
         self.initializeImage()  # `self.current_image` is initialized
         assert self.current_image is not None
-
         
         self.angles = angles
+        self.num_of_angle = len(angles)
         self.index_range_width = index_range_width
         self.line_index_list = range(-self.index_range_width, self.index_range_width+1)
         self.numOfLineIndex = 2 * self.index_range_width + 1
@@ -53,8 +54,21 @@ class Tomo(object):
         
         self.weight_matrix = np.zeros((self.numOfProjection, self.image_flat_length))
         self.weight_norm = np.zeros(self.numOfProjection)
-        self.haveWeightMatrixAndNorm = False
-    
+
+        self.haveWeightMatrixAndNorm = None
+        if w_matrices is None:
+            self.haveWeightMatrixAndNorm = False
+        else:
+            assert isinstance(w_matrices, np.ndarray)
+            if w_matrices.shape == (self.num_of_angle, self.numOfLineIndex, self.image_flat_length):
+                self.weight_matrix[:] = w_matrices.reshape(self.num_of_angle * self.numOfLineIndex, self.image_flat_length)
+            elif w_matrices.shape == (self.numOfProjection, self.image_flat_length):
+                self.weight_matrix[:] = w_matrices[:]
+            self.weight_norm[:] = np.sum(np.square(self.weight_matrix), axis=1)
+            assert np.all(self.weight_norm != 0) # no norm should be zero
+            self.haveWeightMatrixAndNorm = True
+        assert self.haveWeightMatrixAndNorm is not None
+
     def initializeImage(self):
         if self.initial_image_array is None:
             self.current_image = np.ones(self.image_flat_length)
@@ -88,6 +102,7 @@ class Tomo(object):
             * self._getCorrectionFacter(idx_projection)
     
     def iterate(self, n_iter=1):
+        if not self.haveWeightMatrixAndNorm: self.calculateWeightMatrixAndNorm()
         for iter_idx in range(n_iter):
             for idx_projection in range(self.numOfProjection):
                 self._projectCurrentImageOnHyperPlane(idx_projection)

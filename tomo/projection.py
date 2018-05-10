@@ -1,5 +1,6 @@
 """Tools for projecting a N-D data to lower dimension"""
 
+from itertools import product
 from numbers import Real
 
 import numpy as np
@@ -142,6 +143,7 @@ def get_w_matrix(angle, line_index, array_size, r = 1.0, flatten=False, threshol
     w_array[w_array < 0] = 0
     
     if (flatten): 
+        ## [TODO] Add default `order` in separate file and import it and put it in flatten() arguments
         return w_array.flatten()
     
     return w_array
@@ -162,23 +164,91 @@ def project_2d_to_1d(img, angle, ray_index_range_width):
     return projected
 
 
-def get_sinogram_from_image(image_array, angles, ray_index_range_width, verbose=False):
+def get_all_weight_matrices(img_array, angles, ray_index_range_width, verbose=False):
+
+    ray_offsets = [index for index in range(-ray_index_range_width, ray_index_range_width+1)]
     
-    for arr_arg in [image_array, angles]: assert isinstance(arr_arg, np.ndarray)
-    assert (image_array.ndim == 2) and (angles.ndim == 1)
+    num_of_angle = len(angles)
+    num_of_rays = 2 * ray_index_range_width + 1
+    num_of_pixels = img_array.size
+
+    w_matrix_array_shape = (num_of_angle, num_of_rays, num_of_pixels)
+    w_matrix_array = np.empty(w_matrix_array_shape, dtype=float)
+
+    for angle_index, ray_index in product(range(num_of_angle), range(num_of_rays)):
+        angle, ray_offset = angles[angle_index], ray_offsets[ray_index]
+        w_matrix_array[angle_index, ray_index, :] = get_w_matrix(angle, ray_offset, img_array.shape, flatten=True)
+        if (angle_index % (num_of_angle // 7) == 0) and (ray_index == 0) and verbose:
+            log_form = "weight-matrix for angle: {0:.3f} / ray offset: {1:.3f} has been completed."
+            print(log_form.format(angle, ray_offset))
+    
+    return w_matrix_array
+
+
+def get_sinogram_from_image(image_array, angles, ray_index_range_width, w_matrices=None, verbose=False):
+    
+    for arr_arg in [image_array]: assert isinstance(arr_arg, np.ndarray)
+    try: angles = np.array(angles)
+    except: raise TypeError("Cannot convert `angles` (type: {0}) into a numpy.array".format(type(angles)))
+    assert (angles.ndim == 1)
     assert ray_index_range_width == int(ray_index_range_width)
     assert ray_index_range_width >= 0
     
-    num_of_angle = angles.size
+    assert image_array.ndim in [2, 3]  # the image array should be in either 2 or 3 dimension vector space
+    
+    # Determine number of pixels per image slice
+    image_dimension = image_array.ndim
+    num_of_pixels_per_slice = None
+    num_of_slice = None
+    if image_dimension == 2:
+        num_of_pixels_per_slice = image_array.size
+        num_of_slice = 1
+    elif image_dimension == 3:
+        # Size (number of elements = number of pixels) of one image slice,
+        # .. not the size of whole 3D image array
+        # Note that the first index `0` isn't special
+        # .. but can be replaced by any index in range(num_of_slices)
+        num_of_pixels_per_slice = image_array[0,...].size  
+        num_of_slice = image_array.shape[0]
+    else: raise ValueError("Unexpected dimension of image array: {0}".format(image_dimension))
+    assert num_of_pixels_per_slice is not None
+    assert num_of_slice is not None
+
+    num_of_angle = len(angles)
     num_of_ray = 2 * ray_index_range_width + 1
+
+    ## Prepare weight matrices
+    if w_matrices is None:
+        w_matrices = get_all_weight_matrices(image_array, angles, ray_index_range_width, verbose=verbose)
+    else:
+        assert isinstance(w_matrices, np.ndarray)
+        assert w_matrices.shape == (num_of_angle, num_of_ray, num_of_pixels_per_slice)
+
+    ## Determine einsum index annotation depending on the image dimension
+    image_dimension = image_array.ndim
+    image_array_index_notation = [3]
+    if image_dimension == 2: pass
+    elif image_dimension == 3: image_array_index_notation = [0] + image_array_index_notation
+    else: raise ValueError("Unexpected dimension of image array: {0}".format(image_dimension))
+
+    ## Determine image view for einsum
+    image_view = None
+    if image_dimension == 2: image_view = image_array.flatten()
+    elif image_dimension == 3: image_view = image_array.reshape(num_of_slice, num_of_pixels_per_slice)
+    else: raise ValueError("Unexpected dimension of image array: {0}".format(image_dimension))
     
-    sinogram_array_shape = (num_of_angle, num_of_ray)
-    sinogram = np.empty(sinogram_array_shape, dtype=float)
-    
-    for idx, angle in enumerate(angles):
-        if verbose: print("Projecting at angle {0:.3f} pi".format(angle / np.pi))
-        sinogram[idx,:] = project_2d_to_1d(image_array, angle, ray_index_range_width)
-    
+    ## Generate sinogram
+    sinogram = np.einsum(w_matrices, [1,2,3], image_view, image_array_index_notation)
+
     return sinogram
+    
+#    sinogram_array_shape = (num_of_angle, num_of_ray)
+#    sinogram = np.empty(sinogram_array_shape, dtype=float)
+#    
+#    for idx, angle in enumerate(angles):
+#        if verbose: print("Projecting at angle {0:.3f} pi".format(angle / np.pi))
+#        sinogram[idx,:] = project_2d_to_1d(image_array, angle, ray_index_range_width)
+#    
+#    return sinogram
 
 
